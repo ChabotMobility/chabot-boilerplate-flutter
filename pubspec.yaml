@@ -15,6 +15,9 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
+  channel_talk_flutter:
+    path: channel_talk_flutter
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

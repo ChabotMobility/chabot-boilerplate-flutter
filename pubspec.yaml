@@ -15,8 +15,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  channel_talk_flutter:
-    path: channel_talk_flutter
+  url_launcher: ^6.0.9
 
 dev_dependencies:
   flutter_test:

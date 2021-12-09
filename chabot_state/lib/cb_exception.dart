@@ -10,6 +10,10 @@ class CBServiceNotFoundException implements Exception  {
 
 }
 
+class CBCBRouter2ndNotFoundException implements Exception  {
+
+}
+
 class CBPresenterContextException implements Exception  {
 
 }

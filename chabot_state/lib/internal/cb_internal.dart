@@ -242,6 +242,19 @@ mixin CBGeneratePage {
         binding: (context, contract) => binding(context, contract, settings),
         builder: builder,
       );
+
+  @protected
+  Widget generatePage2nd(Map<String, dynamic> queryParameter,
+      Object? arguments,
+      bool Function(BuildContext context,
+          CBPresenterContract contract,
+          Map<String, dynamic> queryParameter,
+          Object? arguments) binding,
+      WidgetBuilder builder) =>
+      _CBPageView(
+        binding: (context, contract) => binding(context, contract, queryParameter, arguments),
+        builder: builder,
+      );
 }
 
 class _CBPageView extends StatefulWidget {

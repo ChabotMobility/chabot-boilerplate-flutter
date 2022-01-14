@@ -1,0 +1,10 @@
+name: chabot_lint
+description: Chatbot Lint
+version: 1.0.0
+homepage:
+
+environment:
+  sdk: ">=2.15.0 <3.0.0"
+
+dependencies:
+  lints: ^1.0.1

@@ -244,11 +244,11 @@ mixin CBGeneratePage {
       );
 
   @protected
-  Widget generatePage2nd(Map<String, dynamic> queryParameter,
+  Widget generatePage2nd(Map<String, String> queryParameter,
       Object? arguments,
       bool Function(BuildContext context,
           CBPresenterContract contract,
-          Map<String, dynamic> queryParameter,
+          Map<String, String> queryParameter,
           Object? arguments) binding,
       WidgetBuilder builder) =>
       _CBPageView(

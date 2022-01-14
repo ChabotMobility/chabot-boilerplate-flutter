@@ -36,6 +36,14 @@ class MainView extends StatelessWidget {
             onTap: () {
               launch('https://chabot.page.link/76UZ?id=event');
             },
+          ),
+          ListTile(
+            title: Text('2. AppsFlyer Deep Link'),
+            subtitle: SelectableText('https://chabot-driver.onelink.me/mvXp/303eea72'),
+            onTap: () {
+              launch('https://chabot-driver.onelink.me/mvXp/303eea72');
+              // launch('https://chabot-driver.onelink.me/mvXp/8c5c3828?af_force_deeplink=true');
+            },
           )
         ],
       )

@@ -14,11 +14,11 @@ class Contract {
 
   Contract._();
 
-  final _RouteInformationParser parser = _RouteInformationParser();
+  final RouteInformationParser<Object> parser = _RouteInformationParser();
 
   _RouterDelegate? _routerDelegate;
 
-  RouterDelegate initRouterDelegate(List<RoutePage> pages) {
+  RouterDelegate<Object> initRouterDelegate(List<RoutePage> pages) {
     _routerDelegate ??= _RouterDelegate(this, pages);
     return _routerDelegate!;
   }

@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/widgets.dart';
 
 import 'exceptions.dart';
@@ -21,6 +19,8 @@ class Service extends ChangeNotifier {
       _Services.instance.lazyPut<T>(service);
 
   static void remove<T extends Service>() => _Services.instance.remove<T>();
+
+  static void disposeService() => _Services.instance.dispose();
 
   @protected
   @mustCallSuper
@@ -108,5 +108,12 @@ class _Services {
       return service;
     }
     return null;
+  }
+
+  void dispose() {
+    for(final service in _services.values) {
+      service.dispose();
+    }
+    _services.clear();
   }
 }

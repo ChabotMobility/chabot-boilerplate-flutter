@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'exceptions.dart';
+import 'page.dart';
 
 part 'presenter.dart';
 part 'router.dart';
@@ -18,8 +20,11 @@ class Contract {
 
   _RouterDelegate? _routerDelegate;
 
-  RouterDelegate<Object> initRouterDelegate(List<RoutePage> pages) {
-    _routerDelegate ??= _RouterDelegate(this, pages);
+  RouterDelegate<Object> initRouterDelegate(
+      HomePageBinder home, List<PageBinder> pages,
+      [PageBinder page404 = const Page404()]) {
+    _routerDelegate ??= _RouterDelegate(
+        contract: this, home: home, pages: pages, page404: page404);
     return _routerDelegate!;
   }
 
@@ -30,7 +35,7 @@ class Contract {
     final page = Contract.instance._routerDelegate?._getPage(routeName);
     if (page != null) {
       final completer = Completer();
-      final pagePresenter = _PresenterContract(
+      final binder = _PresenterBinder(
         configure: _Configure(
             Uri(
                 path: routeName,
@@ -40,7 +45,7 @@ class Contract {
         page: page,
         popCompleter: completer,
       );
-      Contract.instance._pushPagePresenter(pagePresenter);
+      Contract.instance._pushBinder(binder);
       Contract.instance._routerDelegate?._notifyListeners();
       return completer.future;
     }
@@ -48,16 +53,16 @@ class Contract {
     return Future.value(null);
   }
 
-  final List<_PresenterContract> _pagePresenters = [];
+  final List<_PresenterBinder> _binders = [];
 
-  _PresenterContract? _pagePresenterByContext(BuildContext context) {
-    _PresenterContract? pagePresenter;
+  _PresenterBinder? _pagePresenterByContext(BuildContext context) {
+    _PresenterBinder? pagePresenter;
     if(context is StatefulElement && context.state is _ContractState) {
-      pagePresenter = (context.state as _ContractState)._pagePresenter;
+      pagePresenter = (context.state as _ContractState)._bucket;
     } else {
       context.visitAncestorElements((element) {
         if (element is StatefulElement && element.state is _ContractState) {
-          pagePresenter = (element.state as _ContractState)._pagePresenter;
+          pagePresenter = (element.state as _ContractState)._bucket;
           return false;
         }
         return true;
@@ -68,57 +73,83 @@ class Contract {
 
   T? _presentByContext<T extends Presenter>(BuildContext context) => _pagePresenterByContext(context)?.of<T>();
 
-  _PresenterContract? get lastPagePresenter => _pagePresenters.isNotEmpty ? _pagePresenters.last : null;
+  _PresenterBinder? get lastBinder => _binders.isNotEmpty ? _binders.last : null;
 
-  void _pushPagePresenter(_PresenterContract pagePresenter) {
-    for (final pagePresenter in _pagePresenters) {
-      pagePresenter._pausePage();
+  void _pushBinder(_PresenterBinder binder) {
+    for (final binder in _binders) {
+      binder._pausePage();
     }
-    _pagePresenters.add(pagePresenter.._resumePage());
+    _binders.add(binder.._resumePage());
+    print('_pushBinder ${binder.configure.uri.toString()}');
+    // SystemNavigator.routeInformationUpdated(location: binder.configure.uri.toString(), replace: true);
   }
 
-  void _popPagePresenter(_PresenterContract pagePresenter, dynamic result) {
-    _pagePresenters.remove(pagePresenter
+  void _popBinder(_PresenterBinder binder, dynamic result) {
+    _binders.remove(binder
       .._pausePage()
       .._didPop(result));
-    lastPagePresenter?._resumePage();
+    final lastBinder = this.lastBinder;
+    if(lastBinder != null) {
+      lastBinder._resumePage();
+      print('_popBinder ${lastBinder.configure.uri.toString()}');
+      // SystemNavigator.routeInformationUpdated(location: lastBinder.configure.uri.toString(), replace: true);
+    }
   }
 
-  void _setNewContract(_PresenterContract pagePresenter) {
+  void _setNewContract(_RouterDelegate delegate, _Configure configure) {
     int? index;
-    for(int i = _pagePresenters.length - 1; i >= 0; i--) {
-      if(_pagePresenters[i].configure.uri == pagePresenter.configure.uri) {
-        index = i;
-        break;
-      }
-    }
 
-    if(index != null) {
-      for(int i = index + 1; i < _pagePresenters.length; i++) {
-        _pagePresenters[i]._pausePage();
-        _pagePresenters[i]._didPop(null);
+    if (_binders.isEmpty) {
+      if (configure.path == '/') {
+        _pushBinder(
+            _PresenterBinder(configure: configure, page: delegate.home));
+      } else {
+        _pushBinder(
+            _PresenterBinder(configure: configure, page: delegate.home));
+        _pushBinder(_PresenterBinder(
+            configure: configure, page: delegate._getPage(configure.path)));
       }
-      _pagePresenters.removeRange(index + 1, _pagePresenters.length);
-      lastPagePresenter?._resumePage();
     } else {
-      _pushPagePresenter(pagePresenter);
+      for (int i = _binders.length - 1; i >= 0; i--) {
+        if (_binders[i].configure.uri == configure.uri) {
+          index = i;
+          break;
+        }
+      }
+
+      if (index != null) {
+        for (int i = index + 1; i < _binders.length; i++) {
+          _binders[i]._pausePage();
+          _binders[i]._didPop(null);
+        }
+        _binders.removeRange(index + 1, _binders.length);
+        final lastBinder = this.lastBinder;
+        if(lastBinder != null) {
+          lastBinder._resumePage();
+          print('_setNewContract ${lastBinder.configure.uri.toString()}');
+          // SystemNavigator.routeInformationUpdated(location: lastBinder.configure.uri.toString(), replace: true);
+        }
+      } else {
+        _pushBinder(_PresenterBinder(
+            configure: configure, page: delegate._getPage(configure.path)));
+      }
     }
   }
 }
 
-class _PresenterContract implements PagePresenter {
+class _PresenterBinder implements PresenterBinder {
 
   final _Configure configure;
-  final RoutePage page;
+  final PageBinder page;
   final Completer<dynamic>? popCompleter;
 
-  _PresenterContract({required this.configure, required this.page, this.popCompleter});
+  _PresenterBinder({required this.configure, required this.page, this.popCompleter});
   
   void _didPop(dynamic result) {
     popCompleter?.complete(result);
   }
 
-  final Map<Type, Presenter> _presenters = {};
+  final Map<Type, _Presenter> _presenters = {};
   bool _resume = false;
   bool _appLifecycle = false;
 
@@ -139,13 +170,7 @@ class _PresenterContract implements PagePresenter {
 
   void _disposePage() {
     for(final value in _presenters.values) {
-      if(value is PresenterContext) {
-        value._context = null;
-      }
-      if (value is PresenterLifeCycle) {
-        value._pausePage();
-      }
-      value._detachContract();
+      value.dispose();
     }
     _presenters.clear();
 
@@ -156,8 +181,9 @@ class _PresenterContract implements PagePresenter {
     if(!_resume) {
       _resume = true;
       for(final value in _presenters.values) {
-        if (value is PresenterLifeCycle) {
-          value._resumePage();
+        final presenter = value.presenterOrNull;
+        if (presenter is PresenterLifeCycle) {
+          presenter._resumePage();
         }
       }
     }
@@ -167,8 +193,9 @@ class _PresenterContract implements PagePresenter {
     if(_resume) {
       _resume = false;
       for(final value in _presenters.values) {
-        if (value is PresenterLifeCycle) {
-          value._pausePage();
+        final presenter = value.presenterOrNull;
+        if (presenter is PresenterLifeCycle) {
+          presenter._pausePage();
         }
       }
     }
@@ -178,8 +205,9 @@ class _PresenterContract implements PagePresenter {
     if(!_appLifecycle) {
       _appLifecycle = true;
       for (final value in _presenters.values) {
-        if (value is PresenterLifeCycle) {
-          value._resumeAppLifecycle();
+        final presenter = value.presenterOrNull;
+        if (presenter is PresenterLifeCycle) {
+          presenter._resumeAppLifecycle();
         }
       }
     }
@@ -189,29 +217,52 @@ class _PresenterContract implements PagePresenter {
     if(_appLifecycle) {
       _appLifecycle = false;
       for(final value in _presenters.values) {
-        if (value is PresenterLifeCycle) {
-          value._pauseAppLifecycle();
+        final presenter = value.presenterOrNull;
+        if (presenter is PresenterLifeCycle) {
+          presenter._pauseAppLifecycle();
         }
       }
     }
   }
 
+  void _initPresenter(Presenter presenter) {
+    presenter._attachContract();
+    if(presenter is PresenterContext) {
+      presenter._context = () => context;
+    }
+    if (presenter is PresenterLifeCycle) {
+      if(_resume) {
+        presenter._resumePage();
+      }
+      if(_appLifecycle) {
+        presenter._resumeAppLifecycle();
+      }
+    }
+  }
+
+  void _disposePresenter(Presenter presenter) {
+    if(presenter is PresenterContext) {
+      presenter._context = null;
+    }
+    if (presenter is PresenterLifeCycle) {
+      presenter._pausePage();
+    }
+    presenter._detachContract();
+  }
+
+  @override
+  bool lazyPut<T extends Presenter>(PresenterBinderLazyPut<T> presenter) {
+    if(!_presenters.containsKey(T)) {
+      _presenters[T] = _PresenterLazyPut(presenter, _initPresenter, _disposePresenter);
+      return true;
+    }
+    return false;
+  }
+
   @override
   bool put<T extends Presenter>(T presenter) {
     if(!_presenters.containsKey(T)) {
-      _presenters[T] = presenter;
-      presenter._attachContract();
-      if(presenter is PresenterContext) {
-        presenter._context = () => context;
-      }
-      if (presenter is PresenterLifeCycle) {
-        if(_resume) {
-          presenter._resumePage();
-        }
-        if(_appLifecycle) {
-          presenter._resumeAppLifecycle();
-        }
-      }
+      _presenters[T] = _PresenterInstance(presenter, _initPresenter, _disposePresenter);
       return true;
     }
     return false;
@@ -219,15 +270,9 @@ class _PresenterContract implements PagePresenter {
 
   @override
   T? remove<T extends Presenter>() {
-    final presenter = _presenters.remove(T);
-    if (presenter is PresenterLifeCycle) {
-      presenter._pauseAppLifecycle();
-      presenter._pausePage();
-    }
-    if(presenter is PresenterContext) {
-      presenter._context = null;
-    }
-    presenter?._detachContract();
+    final presenter = _presenters.remove(T)?.presenterOrNull;
+    presenter?.dispose();
+
     if(presenter is T) {
       return presenter;
     }
@@ -236,7 +281,7 @@ class _PresenterContract implements PagePresenter {
 
   @override
   T? of<T extends Presenter>() {
-    final presenter = _presenters[T];
+    final presenter = _presenters[T]?.presenter;
     if (presenter is T) {
       return presenter;
     }
@@ -245,9 +290,9 @@ class _PresenterContract implements PagePresenter {
 }
 
 class _ContractWidget extends StatefulWidget {
-  final _PresenterContract pagePresenter;
+  final _PresenterBinder bucket;
 
-  const _ContractWidget({Key? key, required this.pagePresenter}) : super(key: key);
+  const _ContractWidget({Key? key, required this.bucket}) : super(key: key);
 
   @override
   _ContractState createState() => _ContractState();
@@ -256,15 +301,15 @@ class _ContractWidget extends StatefulWidget {
 class _ContractState extends State<_ContractWidget> with WidgetsBindingObserver { // ignore: prefer_mixin
 
   bool _init = false;
-  late final _PresenterContract _pagePresenter;
+  late final _PresenterBinder _bucket;
 
   @override
   void initState() {
     super.initState();
 
-    _pagePresenter = widget.pagePresenter;
+    _bucket = widget.bucket;
     try {
-      final result = _pagePresenter._initPage(() => context);
+      final result = _bucket._initPage(() => context);
       if (result == false) {
         Navigator.pop(context);
         return;
@@ -276,7 +321,7 @@ class _ContractState extends State<_ContractWidget> with WidgetsBindingObserver 
 
     final lifecycleState = WidgetsBinding.instance?.lifecycleState;
     if(lifecycleState == AppLifecycleState.resumed) {
-      _pagePresenter._resumeAppLifecycle();
+      _bucket._resumeAppLifecycle();
     }
     WidgetsBinding.instance?.addObserver(this);
 
@@ -286,7 +331,7 @@ class _ContractState extends State<_ContractWidget> with WidgetsBindingObserver 
   @override
   void dispose() {
     WidgetsBinding.instance?.removeObserver(this);
-    _pagePresenter._disposePage();
+    _bucket._disposePage();
     super.dispose();
   }
 
@@ -294,15 +339,15 @@ class _ContractState extends State<_ContractWidget> with WidgetsBindingObserver 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if(state == AppLifecycleState.resumed) {
-      _pagePresenter._resumeAppLifecycle();
+      _bucket._resumeAppLifecycle();
     } else {
-      _pagePresenter._pauseAppLifecycle();
+      _bucket._pauseAppLifecycle();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return _init ? _pagePresenter.page.builder(context) : Container();
+    return _init ? _bucket.page.builder(context) : Container();
   }
 }
 
@@ -315,5 +360,72 @@ mixin ViewContract {
   void disposeViewContract(Presenter presenter, VoidCallback markNeedsBuild) {
     presenter.removeListener(markNeedsBuild);
     presenter._detachView();
+  }
+}
+
+abstract class _Presenter<T extends Presenter> {
+  final void Function(Presenter presenter) _initPresenter;
+  final void Function(Presenter presenter) _disposePresenter;
+
+  _Presenter(this._initPresenter, this._disposePresenter);
+
+  T get presenter;
+
+  T? get presenterOrNull;
+
+  void dispose();
+}
+
+class _PresenterInstance<T extends Presenter> extends _Presenter<T> {
+  @override
+  final T presenter;
+
+  @override
+  T? get presenterOrNull => presenter;
+
+  _PresenterInstance(
+      this.presenter,
+      void Function(Presenter presenter) initPresenter,
+      void Function(Presenter presenter) disposePresenter)
+      : super(initPresenter, disposePresenter) {
+    _initPresenter(presenter);
+  }
+
+  @override
+  void dispose() {
+    _disposePresenter(presenter);
+  }
+}
+
+class _PresenterLazyPut<T extends Presenter> extends _Presenter<T> {
+  final PresenterBinderLazyPut<T> _presenterLazyPut;
+
+  T? _presenter;
+
+  @override
+  T? get presenterOrNull => _presenter;
+
+  _PresenterLazyPut(
+      this._presenterLazyPut,
+      void Function(Presenter presenter) initPresenter,
+      void Function(Presenter presenter) disposePresenter)
+      : super(initPresenter, disposePresenter);
+
+  @override
+  T get presenter {
+    if(_presenter == null) {
+      final lazy = _presenterLazyPut();
+      _initPresenter(lazy);
+      _presenter = lazy;
+    }
+    return _presenter!;
+  }
+
+  @override
+  void dispose() {
+    final presenter = _presenter;
+    if (presenter != null) {
+      _disposePresenter(presenter);
+    }
   }
 }

@@ -1,24 +1,5 @@
 part of 'contract.dart';
 
-abstract class RoutePage {
-  RoutePage(this.name);
-
-  final String name;
-
-  bool binding(BuildContext context, PagePresenter pagePresenter,
-      Map<String, String> queryParameter, Object? arguments);
-
-  Widget builder(BuildContext context);
-
-  Page createPage(BuildContext context, Uri uri, Widget child) {
-    return MaterialPage(
-      key: ValueKey(uri.toString()),
-      name: uri.path,
-      child: child,
-    );
-  }
-}
-
 class _Configure {
   final Uri uri;
   final Object? arguments;
@@ -60,34 +41,51 @@ class _RouterDelegate extends RouterDelegate<_Configure>
     with ChangeNotifier, PopNavigatorRouterDelegateMixin<_Configure> {   // ignore: prefer_mixin
 
   final Contract contract;
+  final HomePageBinder home;
+  final PageBinder page404;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  String? _currentLocation;
 
   @override
   GlobalKey<NavigatorState> get navigatorKey => _navigatorKey;
 
-  _RouterDelegate(this.contract, List<RoutePage> pages) {
+  _RouterDelegate({required this.contract, required this.home, required this.page404, List<PageBinder>? pages}) {
+    // SystemNavigator.selectSingleEntryHistory().then((value) {
+    //   print('selectSingleEntryHistory');
+    // });
+    // SystemNavigator.selectMultiEntryHistory();
     this.pages = {};
-    for (final page in pages) {
-      this.pages[page.name] = page;
+    if(pages != null) {
+      for (final page in pages) {
+        this.pages[page.path] = page;
+      }
     }
   }
 
-  late final Map<String, RoutePage> pages;
+  late final Map<String, PageBinder> pages;
 
   @override
   _Configure? get currentConfiguration =>
-      contract.lastPagePresenter?.configure ?? _Configure.home();
+      contract.lastBinder?.configure;
 
   @override
   Widget build(BuildContext context) {
-    List<Page> stack = contract._pagePresenters
+    List<Page> stack = contract._binders
         .map((e) => e.page
-            .createPage(context, e.configure.uri, _ContractWidget(pagePresenter: e)))
+            .createPage(context, e.configure.uri, e.configure.arguments, _ContractWidget(bucket: e)))
         .toList();
 
     if(stack.isEmpty) {
       stack.add(MaterialPage(child: Container()));
     }
+
+    // final currentLocation = currentConfiguration?.uri.toString();
+    // if(currentLocation != null && _currentLocation != currentLocation) {
+    //   print('_currentLocation ${_currentLocation} $currentLocation');
+    //   _currentLocation = currentLocation;
+    //   SystemNavigator.routeInformationUpdated(location: currentLocation);
+    // }
 
     return Navigator(
       key: navigatorKey,
@@ -96,7 +94,9 @@ class _RouterDelegate extends RouterDelegate<_Configure>
         if (!route.didPop(result)) return false;
         final name = route.settings.name;
         if(name != null && _popPage(name, result)) {
-          notifyListeners();
+          // SystemNavigator.pop();
+          SystemNavigator.routeInformationUpdated(location: currentConfiguration!.uri.toString());
+          // notifyListeners();
         }
         return true;
       },
@@ -105,25 +105,24 @@ class _RouterDelegate extends RouterDelegate<_Configure>
 
   @override
   Future<void> setNewRoutePath(_Configure configure) async {
-    final page = pages[configure.path];
-    if(page != null) {
-      contract._setNewContract(_PresenterContract(configure: configure, page: page));
-    }
+    print('setNewRoutePath ${configure.uri}');
+    _currentLocation = configure.uri.toString();
+    contract._setNewContract(this, configure);
     notifyListeners();
   }
 
   bool _popPage(String name, dynamic result) {
-    for(final pagePresenter in contract._pagePresenters.reversed) {
-      if(pagePresenter.configure.uri.toString() == name) {
-        contract._popPagePresenter(pagePresenter, result);
+    for(final binder in contract._binders.reversed) {
+      if(binder.configure.uri.toString() == name) {
+        contract._popBinder(binder, result);
         return true;
       }
     }
     return false;
   }
 
-  RoutePage? _getPage(String name) {
-    return pages[name];
+  PageBinder _getPage(String name) {
+    return pages[name] ?? page404;
   }
 
   void _notifyListeners() => notifyListeners();

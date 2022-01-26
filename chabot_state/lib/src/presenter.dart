@@ -69,7 +69,11 @@ class Presenter extends ChangeNotifier {
   }
 }
 
-abstract class PagePresenter {
+typedef PresenterBinderLazyPut<T extends Presenter> = T Function();
+
+abstract class PresenterBinder {
+  bool lazyPut<T extends Presenter>(PresenterBinderLazyPut<T> presenter);
+
   bool put<T extends Presenter>(T presenter);
 
   T? remove<T extends Presenter>();
